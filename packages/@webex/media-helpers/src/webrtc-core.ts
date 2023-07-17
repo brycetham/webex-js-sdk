@@ -3,21 +3,21 @@
 /* eslint-disable require-jsdoc */
 import {
   AudioDeviceConstraints,
-  createCameraTrack as wcmeCreateCameraTrack,
-  createDisplayTrack as wcmeCreateDisplayTrack,
-  createMicrophoneTrack as wcmeCreateMicrophoneTrack,
-  LocalDisplayTrack,
-  LocalMicrophoneTrack as WcmeLocalMicrophoneTrack,
-  LocalCameraTrack as WcmeLocalCameraTrack,
+  createCameraStream as wcmeCreateCameraStream,
+  createDisplayStream as wcmeCreateDisplayStream,
+  createMicrophoneStream as wcmeCreateMicrophoneStream,
+  LocalMicrophoneStream as WcmeLocalMicrophoneStream,
+  LocalCameraStream as WcmeLocalCameraStream,
   VideoDeviceConstraints,
 } from '@webex/internal-media-core';
+import {TypedEvent} from '@webex/ts-events';
 
 export {
   getDevices,
-  LocalTrack,
-  LocalDisplayTrack,
-  LocalTrackEvents,
-  type TrackMuteEvent,
+  LocalStream,
+  LocalDisplayStream,
+  LocalStreamEventNames,
+  StreamEventNames,
 } from '@webex/internal-media-core';
 
 export type ServerMuteReason =
@@ -26,17 +26,21 @@ export type ServerMuteReason =
   | 'localUnmuteRequired'; // server forced the client to be unmuted
 
 // these events are in addition to WCME events. This will be properly typed once webrtc-core event types inheritance is fixed
-export enum LocalMicrophoneTrackEvents {
+export enum LocalMicrophoneStreamEventNames {
   ServerMuted = 'muted:byServer',
 }
 
 // these events are in addition to WCME events. This will be properly typed once webrtc-core event types inheritance is fixed
-export enum LocalCameraTrackEvents {
+export enum LocalCameraStreamEventNames {
   ServerMuted = 'muted:byServer',
 }
 
-export class LocalMicrophoneTrack extends WcmeLocalMicrophoneTrack {
+export class LocalMicrophoneStream extends WcmeLocalMicrophoneStream {
   private unmuteAllowed = true;
+
+  [LocalMicrophoneStreamEventNames.ServerMuted] = new TypedEvent<
+    (muted: boolean, reason: ServerMuteReason) => void
+  >();
 
   /**
    * @internal
@@ -68,13 +72,17 @@ export class LocalMicrophoneTrack extends WcmeLocalMicrophoneTrack {
   setServerMuted(muted: boolean, reason: ServerMuteReason) {
     if (muted !== this.muted) {
       this.setMuted(muted);
-      this.emit(LocalMicrophoneTrackEvents.ServerMuted, {muted, reason});
+      this[LocalMicrophoneStreamEventNames.ServerMuted].emit(muted, reason);
     }
   }
 }
 
-export class LocalCameraTrack extends WcmeLocalCameraTrack {
+export class LocalCameraStream extends WcmeLocalCameraStream {
   private unmuteAllowed = true;
+
+  [LocalCameraStreamEventNames.ServerMuted] = new TypedEvent<
+    (muted: boolean, reason: ServerMuteReason) => void
+  >();
 
   /**
    * @internal
@@ -106,15 +114,15 @@ export class LocalCameraTrack extends WcmeLocalCameraTrack {
   setServerMuted(muted: boolean, reason: ServerMuteReason) {
     if (muted !== this.muted) {
       this.setMuted(muted);
-      this.emit(LocalCameraTrackEvents.ServerMuted, {muted, reason});
+      this[LocalCameraStreamEventNames.ServerMuted].emit(muted, reason);
     }
   }
 }
 
-export const createMicrophoneTrack = (constraints?: AudioDeviceConstraints) =>
-  wcmeCreateMicrophoneTrack(LocalMicrophoneTrack, constraints);
+export const createMicrophoneStream = (constraints?: AudioDeviceConstraints) =>
+  wcmeCreateMicrophoneStream(constraints); // TODO: should return the media-helpers stream class here
 
-export const createCameraTrack = (constraints?: VideoDeviceConstraints) =>
-  wcmeCreateCameraTrack(LocalCameraTrack, constraints);
+export const createCameraStream = (constraints?: VideoDeviceConstraints) =>
+  wcmeCreateCameraStream(constraints); // TODO: should return the media-helpers stream class here
 
-export const createDisplayTrack = () => wcmeCreateDisplayTrack(LocalDisplayTrack);
+export const createDisplayStream = () => wcmeCreateDisplayStream();

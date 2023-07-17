@@ -4,7 +4,12 @@
 /* globals navigator */
 
 import {RoapMediaConnection, MultistreamRoapMediaConnection} from '@webex/internal-media-core';
-import {LocalCameraTrack, LocalDisplayTrack, LocalMicrophoneTrack} from '@webex/media-helpers';
+import {
+  LocalStream,
+  LocalCameraStream,
+  LocalDisplayStream,
+  LocalMicrophoneStream,
+} from '@webex/media-helpers';
 import LoggerProxy from '../common/logs/logger-proxy';
 import {MEDIA_TRACK_CONSTRAINT} from '../constants';
 import Config from '../config';
@@ -120,9 +125,9 @@ Media.createMediaConnection = (
         sendVideo: boolean;
         sendShare: boolean;
       };
-      audioTrack?: LocalMicrophoneTrack;
-      videoTrack?: LocalCameraTrack;
-      shareTrack?: LocalDisplayTrack;
+      audioStream?: LocalMicrophoneStream;
+      videoStream?: LocalCameraStream;
+      shareStream?: LocalDisplayStream;
     };
     remoteQualityLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
     enableRtx?: boolean;
@@ -174,7 +179,7 @@ Media.createMediaConnection = (
     throw new Error('mediaProperties have to be provided for non-multistream media connections');
   }
 
-  const {mediaDirection, audioTrack, videoTrack, shareTrack} = mediaProperties;
+  const {mediaDirection, audioStream, videoStream, shareStream} = mediaProperties;
 
   return new RoapMediaConnection(
     {
@@ -195,10 +200,11 @@ Media.createMediaConnection = (
       },
     },
     {
+      // TODO: RoapMediaConnection is not ready to use stream classes yet, so we pass the raw MediaStreamTrack for now
       localTracks: {
-        audio: audioTrack?.underlyingTrack,
-        video: videoTrack?.underlyingTrack,
-        screenShareVideo: shareTrack?.underlyingTrack,
+        audio: audioStream?.outputStream.getTracks()[0],
+        video: videoStream?.outputStream.getTracks()[0],
+        screenShareVideo: shareStream?.outputStream.getTracks()[0],
       },
       direction: {
         audio: Media.getDirection(true, mediaDirection.receiveAudio, mediaDirection.sendAudio),
@@ -364,21 +370,23 @@ Media.toggleStream = () => {};
 
 /**
  * Stop input stream
- * @param {MediaTrack} track A media stream
+ * @param {LocalStream} stream A local stream
  * @returns {null}
  */
-Media.stopTracks = (track: any) => {
-  if (!track) {
+Media.stopTracks = (stream: LocalStream) => {
+  if (!stream) {
     return Promise.resolve();
   }
 
   return Promise.resolve().then(() => {
-    if (track && track.stop) {
+    if (stream && stream.stop) {
       try {
-        track.stop();
+        stream.stop();
       } catch (e) {
         LoggerProxy.logger.error(
-          `Media:index#stopTracks --> Unable to stop the track with state ${track.readyState}, error: ${e}`
+          `Media:index#stopTracks --> Unable to stop the track with state ${
+            stream.outputStream.getTracks()[0].readyState
+          }, error: ${e}`
         );
       }
     }

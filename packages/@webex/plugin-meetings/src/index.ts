@@ -10,18 +10,18 @@ registerPlugin('meetings', Meetings, {
 
 export {
   getDevices,
-  LocalTrack,
-  LocalDisplayTrack,
-  LocalTrackEvents,
-  type TrackMuteEvent,
+  LocalStream,
+  LocalDisplayStream,
+  LocalStreamEventNames,
+  StreamEventNames,
   type ServerMuteReason,
-  LocalMicrophoneTrackEvents,
-  LocalCameraTrackEvents,
-  LocalMicrophoneTrack,
-  LocalCameraTrack,
-  createMicrophoneTrack,
-  createCameraTrack,
-  createDisplayTrack,
+  LocalMicrophoneStreamEventNames,
+  LocalCameraStreamEventNames,
+  LocalMicrophoneStream,
+  LocalCameraStream,
+  createMicrophoneStream,
+  createCameraStream,
+  createDisplayStream,
 } from '@webex/media-helpers';
 
 export default Meetings;

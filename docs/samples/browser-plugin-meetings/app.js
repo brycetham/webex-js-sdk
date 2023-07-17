@@ -691,12 +691,11 @@ const htmlMediaElements = [
 
 
 function cleanUpMedia() {
-  // the local tracks get stopped when we get the unpublished event for them, so here we only need to lose the reference to them
-  localMedia.microphoneTrack = undefined;
-  localMedia.cameraTrack = undefined;
+  localMedia.microphoneStream.stop();
+  localMedia.microphoneStream = undefined;
+  localMedia.cameraStream.stop();
+  localMedia.cameraStream = undefined;
 
-  // local tracks are stopped when we get the event that they got unpublished
-  // so here, we only stop remote tracks
   [
     meetingStreamsRemoteVideo,
     meetingStreamsRemoteShare,
@@ -932,8 +931,8 @@ const localVideoQuality = {
   '1080p': '1080p'
 };
 const localMedia = {
-  microphoneTrack: undefined,
-  cameraTrack: undefined,
+  microphoneStream: undefined,
+  cameraStream: undefined,
   screenShare: {
     video: undefined,
     audio: undefined, // SPARK-399690
@@ -944,27 +943,6 @@ const localMedia = {
     [localVideoQuality["720p"]]: { width: 1280, height: 720 },
     [localVideoQuality["1080p"]]: { width: 1920, height: 1080 },
   }
-}
-
-function handleTrackUnpublished(track, mediaElement, debugString) {
-  track.on('published-state-update', ({isPublished}) => {
-    if (!isPublished) {
-      console.log(`MeetingControls#getUserMedia() :: ${debugString} track unpublished, stopping it`);
-      track.stop();
-    }
-  });
-}
-function handleUnderlyingTrackChanged(track, mediaElement, debugString) {
-  track.on('underlying-track-change', () => {
-    console.log(`MeetingControls#handleUnderlyingTrackChanged() :: underlying track changed for ${debugString}`);
-
-    mediaElement.srcObject = track.underlyingStream;
-  });
-}
-
-function handleLocalTrackEvents(track, mediaElement, debugString) {
-  handleTrackUnpublished(track, mediaElement, debugString);
-  handleUnderlyingTrackChanged(track, mediaElement, debugString);
 }
 
 async function getUserMedia(constraints = {audio: true, video: true}) {
@@ -981,26 +959,22 @@ async function getUserMedia(constraints = {audio: true, video: true}) {
   if (constraints.audio) {
     const audioConstraints = {...constraints.audio};
 
-    console.log('MeetingControls#getUserMedia() :: getting microphone track with constraints: ', audioConstraints);
-    localMedia.microphoneTrack = await webex.meetings.mediaHelpers.createMicrophoneTrack(audioConstraints);
+    console.log('MeetingControls#getUserMedia() :: getting microphone stream with constraints: ', audioConstraints);
+    localMedia.microphoneStream = await webex.meetings.mediaHelpers.createMicrophoneStream(audioConstraints);
 
-    handleLocalTrackEvents(localMedia.microphoneTrack, meetingStreamsLocalAudio, 'local microphone');
-
-    meetingStreamsLocalAudio.srcObject = localMedia.microphoneTrack.underlyingStream;
+    meetingStreamsLocalAudio.srcObject = localMedia.microphoneStream.outputStream;
   }
 
   if (constraints.video) {
     const videoConstraints = {...localMedia.videoConstraints[localVideoQuality[localResolutionInp.value]], ...constraints.video};
 
-    console.log('MeetingControls#getUserMedia() :: getting camera track with constraints: ', videoConstraints);
-    localMedia.cameraTrack = await webex.meetings.mediaHelpers.createCameraTrack(videoConstraints);
+    console.log('MeetingControls#getUserMedia() :: getting camera stream with constraints: ', videoConstraints);
+    localMedia.cameraStream = await webex.meetings.mediaHelpers.createCameraStream(videoConstraints);
 
-    handleLocalTrackEvents(localMedia.cameraTrack, meetingStreamsLocalVideo, 'local camera');
-
-    meetingStreamsLocalVideo.srcObject = localMedia.cameraTrack.underlyingStream;
+    meetingStreamsLocalVideo.srcObject = localMedia.cameraStream.outputStream;
   }
 
-  console.log('MeetingControls#getUserMedia() :: got following local tracks:', localMedia.microphoneTrack, localMedia.cameraTrack);
+  console.log('MeetingControls#getUserMedia() :: got following local streams:', localMedia.microphoneStream, localMedia.cameraStream);
   return;
 }
 
@@ -1091,10 +1065,10 @@ function setVideoInputDevice() {
   const {video} = getAudioVideoInput();
 
   if (meeting) {
-    localMedia.cameraTrack?.stop();
+    localMedia.cameraStream?.stop();
 
     return getUserMedia({video})
-      .then(() => meeting.publishTracks({camera: localMedia.cameraTrack}));
+      .then(() => meeting.publishStreams({camera: localMedia.cameraStream}));
   }
   else {
     console.log('MeetingControls#setVideoInputDevice() :: no valid meeting object!');
@@ -1106,10 +1080,10 @@ function setAudioInputDevice() {
   const {audio} = getAudioVideoInput();
 
   if (meeting) {
-    localMedia.microphoneTrack?.stop();
+    localMedia.microphoneStream?.stop();
 
     return getUserMedia({audio})
-      .then(() => meeting.publishTracks({microphone: localMedia.microphoneTrack}));
+      .then(() => meeting.publishStreams({microphone: localMedia.microphoneStream}));
   }
   else {
     console.log('MeetingControls#setAudioInputDevice() :: no valid meeting object!');
@@ -1139,10 +1113,10 @@ function toggleSendAudio() {
     return;
   }
 
-  if (localMedia.microphoneTrack) {
-    const newMuteValue = !localMedia.microphoneTrack.muted;
+  if (localMedia.microphoneStream) {
+    const newMuteValue = !localMedia.microphoneStream.muted;
 
-    localMedia.microphoneTrack.setMuted(newMuteValue);
+    localMedia.microphoneStream.setMuted(newMuteValue);
 
     console.log(`MeetingControls#toggleSendAudio() :: Successfully ${newMuteValue ? 'muted': 'unmuted'} audio!`);
     return;
@@ -1159,10 +1133,10 @@ function toggleSendVideo() {
     return;
   }
 
-  if (localMedia.cameraTrack) {
-    const newMuteValue = !localMedia.cameraTrack.muted;
+  if (localMedia.cameraStream) {
+    const newMuteValue = !localMedia.cameraStream.muted;
 
-    localMedia.cameraTrack.setMuted(newMuteValue);
+    localMedia.cameraStream.setMuted(newMuteValue);
 
     console.log(`MeetingControls#toggleSendVideo() :: Successfully ${newMuteValue ? 'muted': 'unmuted'} video!`);
     return;
@@ -1185,26 +1159,24 @@ async function startScreenShare() {
   // Using async/await to make code more readable
   console.log('MeetingControls#startScreenShare()');
   try {
-    const localShareVideoTrack = await webex.meetings.mediaHelpers.createDisplayTrack();
+    const localShareVideoStream = await webex.meetings.mediaHelpers.createDisplayStream();
 
-    localMedia.screenShare.video = localShareVideoTrack;
-    localMedia.screenShare.video.on('published-state-update', ({isPublished}) => {
-      if (!isPublished) {
-        console.log('MeetingControls#startScreenShare() :: local share video track unpublished, stopping it');
+    localMedia.screenShare.video = localShareVideoStream;
+    localMedia.screenShare.video.on('stream-ended', () => {
+      console.log('MeetingControls#startScreenShare() :: local share video stream ended');
 
-        localMedia.screenShare.video.stop();
-        localMedia.screenShare.video = undefined;
+      localMedia.screenShare.audio = undefined;
+      localMedia.screenShare.video = undefined;
 
-        meetingStreamsLocalShare.srcObject = null;
-      }
+      meetingStreamsLocalShare.srcObject = null;
     });
 
-    meetingStreamsLocalShare.srcObject = localShareVideoTrack.underlyingStream;
+    meetingStreamsLocalShare.srcObject = localShareVideoStream.outputStream;
 
-    console.log('MeetingControls#startScreenShare() :: publishing share video track');
-    await meeting.publishTracks({
+    console.log('MeetingControls#startScreenShare() :: publishing share video stream');
+    await meeting.publishStreams({
       screenShare: {
-        video: localShareVideoTrack,
+        video: localShareVideoStream,
       }
     });
 
@@ -1221,17 +1193,20 @@ async function stopScreenShare() {
 
   console.log('MeetingControls#stopScreenShare()');
   try {
-    const tracksToUnpublish = [];
+    const streamsToUnpublish = [];
 
     if (localMedia.screenShare.audio) {
-      tracksToUnpublish.push(localMedia.screenShare.audio);
+      streamsToUnpublish.push(localMedia.screenShare.audio);
     }
     if (localMedia.screenShare.video) {
-      tracksToUnpublish.push(localMedia.screenShare.video);
+      streamsToUnpublish.push(localMedia.screenShare.video);
     }
 
-    if (tracksToUnpublish.length) {
-      await meeting.unpublishTracks(tracksToUnpublish);
+    if (streamsToUnpublish.length) {
+      localMedia.screenShare.audio?.stop();
+      localMedia.screenShare.video?.stop();
+
+      await meeting.unpublishStreams(streamsToUnpublish);
     }
 
     console.log('MeetingControls#stopScreenShare() :: Successfully stopped sharing!');
@@ -1247,8 +1222,8 @@ function setLocalMeetingQuality() {
 
   const videoConstraints = {...localMedia.videoConstraints[localVideoQuality[localResolutionInp.value]], ...audioVideoInputDevices.video};
 
-  console.log('MeetingControls#setLocalMeetingQuality() :: applying new constraints to camera track: ', videoConstraints);
-  return localMedia.cameraTrack?.applyConstraints(videoConstraints);
+  console.log('MeetingControls#setLocalMeetingQuality() :: applying new constraints to camera stream: ', videoConstraints);
+  return localMedia.cameraStream?.applyConstraints(videoConstraints);
 
 }
 
@@ -1279,8 +1254,8 @@ function clearMediaDeviceList() {
 function getLocalMediaSettings() {
   const meeting = getCurrentMeeting();
 
-  if (meeting && meeting.mediaProperties.videoTrack) {
-    const videoSettings = meeting.mediaProperties.videoTrack?.getSettings();
+  if (meeting && meeting.mediaProperties.videoStream) {
+    const videoSettings = meeting.mediaProperties.videoStream?.getSettings();
     const {frameRate, height} = videoSettings;
 
     localVideoResElm.innerText = `${height}p ${Math.round(frameRate)}fps`;
@@ -1290,8 +1265,8 @@ function getLocalMediaSettings() {
 function getRemoteMediaSettings() {
   const meeting = getCurrentMeeting();
 
-  if (meeting && meeting.mediaProperties.remoteVideoTrack) {
-    const videoSettings = meeting.mediaProperties.remoteVideoTrack.getSettings();
+  if (meeting && meeting.mediaProperties.remoteVideoStream) {
+    const videoSettings = meeting.mediaProperties.remoteVideoStream.getSettings();
     const {frameRate, height} = videoSettings;
 
     remoteVideoResElm.innerText = `${height}p ${Math.round(frameRate)}fps`;
@@ -2094,9 +2069,9 @@ function addMedia() {
 
   // addMedia using the default RemoteMediaManagerConfig
   meeting.addMedia({
-    localTracks: {
-      microphone: localMedia.microphoneTrack,
-      camera: localMedia.cameraTrack,
+    localStreams: {
+      microphone: localMedia.microphoneStream,
+      camera: localMedia.cameraStream,
     },
     ...getMediaSettings()
     }

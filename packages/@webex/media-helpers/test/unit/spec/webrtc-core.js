@@ -1,14 +1,14 @@
 import {assert, expect} from '@webex/test-helper-chai';
 import sinon from 'sinon';
 import {
-  LocalCameraTrack,
-  LocalMicrophoneTrack,
-  LocalMicrophoneTrackEvents,
-  LocalCameraTrackEvents,
+  LocalCameraStream,
+  LocalMicrophoneStream,
+  LocalMicrophoneStreamEventNames,
+  LocalCameraStreamEventNames,
   LocalDisplayTrack,
-  createCameraTrack,
-  createMicrophoneTrack,
-  createDisplayTrack,
+  createCameraStream,
+  createMicrophoneStream,
+  createDisplayStream,
 } from '../../../src/webrtc-core';
 import * as wcmetracks from '@webex/internal-media-core';
 
@@ -16,18 +16,18 @@ describe('media-helpers', () => {
   describe('webrtc-core', () => {
     const classesToTest = [
       {
-        className: LocalCameraTrack,
-        title: 'LocalCameraTrack',
-        event: LocalCameraTrackEvents,
-        createFn: createCameraTrack,
-        spyFn: 'createCameraTrack',
+        className: LocalCameraStream,
+        title: 'LocalCameraStream',
+        event: LocalCameraStreamEventNames,
+        createFn: createCameraStream,
+        spyFn: 'createCameraStream',
       },
       {
-        className: LocalMicrophoneTrack,
-        title: 'LocalMicrophoneTrack',
-        event: LocalMicrophoneTrackEvents,
-        createFn: createMicrophoneTrack,
-        spyFn: 'createMicrophoneTrack',
+        className: LocalMicrophoneStream,
+        title: 'LocalMicrophoneStream',
+        event: LocalMicrophoneStreamEventNames,
+        createFn: createMicrophoneStream,
+        spyFn: 'createMicrophoneStream',
       },
     ];
 
@@ -39,33 +39,34 @@ describe('media-helpers', () => {
               label: 'fake track',
               id: 'fake track id',
               enabled: true,
+              addEventListener: sinon.stub(),
             },
           ]),
         };
-        const track = new className(fakeStream);
+        const stream = new className(fakeStream);
 
         afterEach(() => {
           sinon.restore();
         });
 
         it('by default allows unmuting', async () => {
-          assert.equal(track.isUnmuteAllowed(), true);
-          await track.setMuted(false);
+          assert.equal(stream.isUnmuteAllowed(), true);
+          await stream.setMuted(false);
         });
 
         it('rejects setMute(false) if unmute is not allowed', async () => {
-          track.setUnmuteAllowed(false);
+          stream.setUnmuteAllowed(false);
 
-          assert.equal(track.isUnmuteAllowed(), false);
-          const fn = () => track.setMuted(false);
+          assert.equal(stream.isUnmuteAllowed(), false);
+          const fn = () => stream.setMuted(false);
           expect(fn).to.throw(/Unmute is not allowed/);
         });
 
         it('resolves setMute(false) if unmute is allowed', async () => {
-          track.setUnmuteAllowed(true);
+          stream.setUnmuteAllowed(true);
 
-          assert.equal(track.isUnmuteAllowed(), true);
-          await track.setMuted(false);
+          assert.equal(stream.isUnmuteAllowed(), true);
+          await stream.setMuted(false);
         });
 
         describe('#setServerMuted', () => {
@@ -74,18 +75,18 @@ describe('media-helpers', () => {
           });
 
           const checkSetServerMuted = async (startMute, setMute, expectedCalled) => {
-            await track.setMuted(startMute);
+            await stream.setMuted(startMute);
 
-            assert.equal(track.muted, startMute);
+            assert.equal(stream.muted, startMute);
 
             const handler = sinon.fake();
-            track.on(event.ServerMuted, handler);
+            stream.on(event.ServerMuted, handler);
 
-            await track.setServerMuted(setMute, 'remotelyMuted');
+            await stream.setServerMuted(setMute, 'remotelyMuted');
 
-            assert.equal(track.muted, setMute);
+            assert.equal(stream.muted, setMute);
             if (expectedCalled) {
-              assert.calledOnceWithExactly(handler, {muted: setMute, reason: 'remotelyMuted'});
+              assert.calledOnceWithExactly(handler, setMute, 'remotelyMuted');
             } else {
               assert.notCalled(handler);
             }
@@ -108,7 +109,7 @@ describe('media-helpers', () => {
           });
         });
 
-        describe('#wcmeCreateMicrophoneTrack, #wcmeCreateCameraTrack', () => {
+        describe('#wcmeCreateMicrophoneStream, #wcmeCreateCameraStream', () => {
           it('checks creating tracks', async () => {
             const constraints = {devideId: 'abc'};
 
@@ -116,18 +117,18 @@ describe('media-helpers', () => {
             const result = createFn(constraints);
 
             assert.equal(result, 'something');
-            assert.calledOnceWithExactly(spy, className, constraints);
+            assert.calledOnceWithExactly(spy, constraints);
           });
         });
       })
     );
 
-    describe('createDisplayTrack', () => {
-      it('checks createDisplayTrack', async () => {
-        const spy = sinon.stub(wcmetracks, 'createDisplayTrack').returns('something');
-        const result = createDisplayTrack();
+    describe('createDisplayStream', () => {
+      it('checks createDisplayStream', async () => {
+        const spy = sinon.stub(wcmetracks, 'createDisplayStream').returns('something');
+        const result = createDisplayStream();
         assert.equal(result, 'something');
-        assert.calledOnceWithExactly(spy, LocalDisplayTrack);
+        assert.calledOnceWithExactly(spy);
       });
     });
   });
